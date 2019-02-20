@@ -1,2 +1,4 @@
-# Useful code sharing by PMG lab members
-The project provide some code sharing by members of Precision Medicine Genetics Lab.
+# Useful Code
+The project provides some code sharing by members of Precision Medicine Genetics Lab.
+## python
+The directory ./python list some useful python code.
