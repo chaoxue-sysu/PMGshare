@@ -1,5 +1,4 @@
 import warnings
-import random
 def pvalue_adjust(pvalue:[],method='FDR'):
     if method!='FDR':
         warnings.warn('Not support other Method, try to adjust p value by FDR!')
