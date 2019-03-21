@@ -1,7 +1,6 @@
 /*
  * Copyright © 2018 SNPLIFE.COM
  * All Rights Reserved 
- * 
  */
 package com.snplife.test;
 
