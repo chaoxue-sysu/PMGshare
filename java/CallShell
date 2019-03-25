@@ -1,0 +1,39 @@
+/*
+ * Copyright © 2018 SNPLIFE.COM
+ * All Rights Reserved 
+ * 
+ */
+package com.snplife.test;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+
+/**
+ *
+ * @author xuechao
+ */
+public class CallShell {
+    public static void main(String args[]) throws Exception{
+        callShell("ifconfig");
+    }
+    
+    public static void callShell(String shell) throws IOException, InterruptedException{
+        Process process = null;
+        BufferedReader coverbr=null;
+        String line;
+        process = Runtime.getRuntime().exec(shell);
+        // or 
+        //process = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", shell});
+        // get the standard output of shell
+        coverbr = new BufferedReader(new InputStreamReader(process.getInputStream()));
+        while((line=coverbr.readLine())!=null){
+            // TO-DO
+            System.out.println(line);
+        }
+        coverbr.close();
+        //wait for the shell terminate
+        process.waitFor();
+        process.destroy();
+    }
+}
