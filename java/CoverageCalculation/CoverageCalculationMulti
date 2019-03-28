@@ -1,0 +1,282 @@
+/*
+ * Copyright © 2018 SNPLIFE.COM
+ * All Rights Reserved 
+ * 
+ */
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.RandomAccessFile;
+import java.nio.channels.Channels;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.CodingErrorAction;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
+import java.util.zip.ZipException;
+
+/**
+ *
+ * @author xuechao
+ */
+public class CoverageCalculationMulti {
+
+    String bamDir = "/public1/data/projects/prof_hc/HC_exome_2015/bam_hguo";
+    String samtoolsPath = "/sdb1/tools/wgss/samtools/bin/samtools";
+    String tmpBamPath = "/home/jh/projects/RUNER/Autism/ExonCoverage/tmpBam_pan02";
+    String tmpDepthPath = "/home/jh/projects/RUNER/Autism/ExonCoverage/tmpDepthSplit";
+    String depthResultPath = "/home/jh/projects/RUNER/Autism/ExonCoverage/ResultMulti_M8_node02.txt";
+    String pedPath = "/home/jh/projects/RUNER/Autism/ExonCoverage/autism_lmx_moved.ped";
+    String geneExonRange = "/home/jh/projects/RUNER/Autism/ExonCoverage/GeneExonRegion.txt";
+    int extend = 200;
+    int geneLimit = 20;
+    int sampleLimit = 3;
+    int nt;
+    SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+    Set<String> sampleID;
+    BufferedWriter gbw;
+    int geneCount = 0;
+
+    String breakPointFile = "/home/jh/projects/RUNER/Autism/ExonCoverage/ResultMulti_M8_pan02.txt";
+
+    public CoverageCalculationMulti(int nt, int geneLimit, int sampleLimit) {
+        this.nt = nt;
+        this.geneLimit = geneLimit;
+        this.sampleLimit = sampleLimit;
+    }
+
+    public static void main(String[] args) throws Exception {
+        new CoverageCalculationMulti(Integer.valueOf(args[0]), Integer.valueOf(args[1]), Integer.valueOf(args[2])).calculate();
+    }
+
+    public void calculate() throws Exception {
+        System.out.println("[" + df.format(new Date()) + "] " + " main start... ");
+        if (!new File(tmpDepthPath).exists()) {
+            new File(tmpDepthPath).mkdirs();
+        }
+        if (!new File(tmpBamPath).exists()) {
+            new File(tmpBamPath).mkdirs();
+        }
+        // get sample id
+        sampleID = new HashSet<String>();
+        BufferedReader br = getBufferedReader(pedPath);
+        String line = br.readLine();
+        int scou = 0;
+        while ((line = br.readLine()) != null) {
+
+            String sampleid = line.split("\t", -1)[1];
+            if (!new File(new File(bamDir).getAbsolutePath() + java.io.File.separator + sampleid + "_final.bam").exists()) {
+                continue;
+            }
+            scou++;
+            if (scou > sampleLimit) {
+                break;
+            }
+            sampleID.add(sampleid);
+        }
+        br.close();
+        System.out.println("sample size: " + sampleID.size());
+        // read gene exon range file
+        gbw = getBufferedWriter(depthResultPath, false);
+        gbw.write("GeneName\tExonLength\tExonCovergeDepthMore1\tExonCoverageDepthMore8\tExonAvgDepth\n");
+        gbw.flush();
+        br = getBufferedReader(geneExonRange);
+        int cou = 0;
+
+        //support break-point
+        Set<String> existGeneSet = new HashSet<String>();
+        BufferedReader bpbr = getBufferedReader(breakPointFile);
+        bpbr.readLine();
+        while ((line = bpbr.readLine()) != null) {
+            gbw.write(line + "\n");
+            gbw.flush();
+            existGeneSet.add(line.split("\t")[0]);
+        }
+        bpbr.close();
+        Object bo;
+        ExecutorService executorService = Executors.newFixedThreadPool(nt);
+        Set<Future> fs = new HashSet<Future>();
+
+        while ((line = br.readLine()) != null) {
+            cou++;
+            if (cou > geneLimit) {
+                break;
+            }
+            if (existGeneSet.contains(line.split(" ", -1)[0])) {
+                geneCount += 1;
+                continue;
+            }
+            while (fs.size() >= nt) {
+                for (Future fu : fs) {
+                    bo = new Object();
+                    //waiting time !!!!
+                    try {
+                        bo = fu.get(10, TimeUnit.MILLISECONDS);
+                    } catch (Exception e) {
+                        continue;
+                    }
+                    if (bo == null) {
+                        fs.remove(fu);
+                        break;
+                    }
+                }
+            }
+            fs.add(executorService.submit(new CalculateDepth(line)));
+        }
+        executorService.shutdown();
+        executorService.awaitTermination(24, TimeUnit.DAYS);
+        br.close();
+        gbw.close();
+        System.out.println("[" + df.format(new Date()) + "] " + "main finish... ");
+    }
+
+    static private BufferedReader getBufferedReader(String filePath) throws Exception {
+        BufferedReader br = null;
+        File dataFile = new File(filePath);
+        if (dataFile.exists()) {
+            CharsetDecoder decoder = Charset.forName("UTF-8").newDecoder();
+            decoder.onMalformedInput(CodingErrorAction.IGNORE);
+            try {
+                br = new BufferedReader(Channels.newReader(Channels.newChannel(new GZIPInputStream(Channels.newInputStream(new RandomAccessFile(dataFile, "r").getChannel()))), decoder, 1024 * 1024));
+            } catch (ZipException ex) {
+
+                br = new BufferedReader(Channels.newReader(Channels.newChannel(Channels.newInputStream(new RandomAccessFile(dataFile, "r").getChannel())), decoder, 1024 * 1024));
+            }
+        } else {
+            throw new Exception("No input file: " + dataFile.getCanonicalPath());
+        }
+        return br;
+    }
+
+    static public BufferedWriter getBufferedWriter(String filePath, boolean isGzip) throws Exception {
+        BufferedWriter bw = null;
+        File dataFile = new File(filePath);
+        if (!dataFile.getParentFile().exists()) {
+            dataFile.getParentFile().mkdirs();
+        }
+        CharsetEncoder decoder = Charset.forName("UTF-8").newEncoder();
+        decoder.onMalformedInput(CodingErrorAction.IGNORE);
+        if (isGzip) {
+            bw = new BufferedWriter(new OutputStreamWriter(new GZIPOutputStream(new FileOutputStream(dataFile))));
+        } else {
+            bw = new BufferedWriter(new FileWriter(dataFile));
+        }
+        return bw;
+    }
+
+    private class CalculateDepth implements Runnable {
+
+        String line;
+
+        public CalculateDepth(String line) {
+            this.line = line;
+        }
+
+        @Override
+        public void run() {
+            BufferedReader coverbr = null;
+            InputStream is = null;
+            String[] arr = line.split(" ", -1);
+            String gene = arr[0];
+            int exonLength = 0;
+            float exonCovergeLength = 0;
+            float exonCovergeM8 = 0;
+            float exonAvgDepth = 0;
+            for (String sample : sampleID) {
+                int coverageV = 0;
+                int coverageM8V = 0;
+                int fullDepthV = 0;
+                int exonLen = 0;
+                for (int i = 1; i < arr.length; i++) {
+                    int co = 0;
+                    int ful = 0;
+                    int exo = 0;
+                    String pos = arr[i];
+                    String[] postmp = pos.split(":")[1].split("-");
+                    int start = Integer.valueOf(postmp[0]);
+                    int end = Integer.valueOf(postmp[1]);
+                    String extendPos = pos.split(":")[0] + ":" + (start - extend) + "-" + (end + extend);
+                    String sampleBAM = new File(bamDir).getAbsolutePath() + java.io.File.separator + sample + "_final.bam";
+                    String calculateDepth = samtoolsPath + " depth -r " + pos + " " + sampleBAM;
+
+                    Process process = null;
+                    try {
+                        process = Runtime.getRuntime().exec(calculateDepth);
+                        coverbr = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                    } catch (Exception ex) {
+                        try {
+                            coverbr.close();
+                        } catch (IOException ex1) {
+                            Logger.getLogger(CoverageCalculationMulti.class.getName()).log(Level.SEVERE, null, ex1);
+                        }
+                        Logger.getLogger(CoverageCalculationMulti.class.getName()).log(Level.SEVERE, null, ex);
+                        continue;
+                    }
+                    // calculate
+                    String cline;
+                    try {
+                        while ((cline = coverbr.readLine()) != null) {
+                            String carr[] = cline.split("\t", -1);
+                            int posSNP = Integer.valueOf(carr[1]);
+                            if (posSNP < start || posSNP >= end) {
+                                continue;
+                            }
+                            co += 1;
+                            coverageV += 1;
+                            if (Integer.valueOf(carr[2]) >= 8) {
+                                coverageM8V += 1;
+                            }
+                            fullDepthV += Integer.valueOf(carr[2]);
+                            ful += Integer.valueOf(carr[2]);
+                        }
+                        coverbr.close();
+                    } catch (IOException ex) {
+                        Logger.getLogger(CoverageCalculationMulti.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                    try {
+                        process.waitFor();
+                    } catch (InterruptedException ex) {
+                        Logger.getLogger(CoverageCalculationMulti.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                    process.destroy();
+                    exonLen += end - start;
+                }
+                exonLength += exonLen;
+                exonCovergeLength += (Float.valueOf(coverageV) / exonLen);
+                exonCovergeM8 += (Float.valueOf(coverageM8V) / exonLen);
+                exonAvgDepth += (Float.valueOf(fullDepthV) / exonLen);
+            }
+            exonLength = exonLength / sampleID.size();
+            exonCovergeLength = exonCovergeLength / sampleID.size();
+            exonAvgDepth = exonAvgDepth / sampleID.size();
+            exonCovergeM8 = exonCovergeM8 / sampleID.size();
+            try {
+                gbw.write(gene + "\t" + exonLength + "\t" + exonCovergeLength + "\t" + exonCovergeM8 + "\t" + exonAvgDepth + "\t" + "\n");
+                gbw.flush();
+            } catch (IOException ex) {
+                Logger.getLogger(CoverageCalculationMulti.class.getName()).log(Level.SEVERE, null, ex);
+            }
+            geneCount += 1;
+            System.out.println("[" + df.format(new Date()) + "] " + geneCount + ": " + gene + " finish...");
+        }
+    }
+
+}
