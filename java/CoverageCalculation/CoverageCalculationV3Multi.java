@@ -310,7 +310,7 @@ public class CoverageCalculationV3Multi {
         bw.write("GeneName\tExonLength\tExonCoverageMore_1\tExonCoverageMore_"+MAXDepth+"\tExonAvgDepth\n");
         for(String gene:geneDepth.keySet()){
             int count[]=geneDepth.get(gene);
-            bw.write(gene+"\t"+count[0]+"\t"+Float.valueOf(count[1])/count[0]+"\t"+Float.valueOf(count[2])/count[0]+"\t"+Float.valueOf(count[3])/count[0]+"\n");
+            bw.write(gene+"\t"+count[0]+"\t"+Float.valueOf(count[1])/count[0]/sampleID.size()+"\t"+Float.valueOf(count[2])/count[0]/sampleID.size()+"\t"+Float.valueOf(count[3])/count[0]/sampleID.size()+"\n");
         }
         bw.close();
         System.out.println("[" + df.format(new Date()) + "] " + " all finish... ");
