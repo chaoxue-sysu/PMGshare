@@ -1,2 +1,2 @@
 # Introduction
-This part provide some basic knowledge of Statistic in Genetics. 
+This part provides some basic knowledge of Statistic in Genetics. 
