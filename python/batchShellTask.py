@@ -1,6 +1,6 @@
 import time
 import subprocess
-def batchShellTask(all_task,limit_task):
+def batchShellTask(all_task,limit_task,Log_file):
     '''
     batch shell task
     :param all_task: all shell task list
@@ -9,12 +9,13 @@ def batchShellTask(all_task,limit_task):
     :type limit_task: int
     :return: null
     '''
+    log = open(Log_file, "w")
     task_pool=[]
     task_remain=len(all_task)
     for task in all_task:
         task_remain+=-1
         break_out = True
-        p = subprocess.Popen(task, shell=True, stdin=subprocess.PIPE,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(task, shell=True, stdin=log, stdout=log, stderr=log, close_fds=True)
         task_pool.append(p)
         print(time.strftime("[%Y-%m-%d %H:%M:%S]", time.localtime()) + ' '+str(p.pid)+': '+task+' start ...')
         if len(task_pool)==limit_task or task_remain==0:
@@ -29,9 +30,12 @@ def batchShellTask(all_task,limit_task):
                         if len(task_pool)==0:
                             break_out=False
                         break
+    log.close()
+
 def test_demo():
-    shells=['ls','pwd','ifconfig']
-    batchShellTask(shells,2)
+    parallel_shells=['ls','pwd','ifconfig']
+    # Please specify the log file path here
+    batchShellTask(parallel_shells,2,Log_file)
 
 if __name__=='__main__':
     test_demo()
