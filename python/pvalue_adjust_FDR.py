@@ -15,9 +15,7 @@ def pvalue_adjust(pvalue:[],method='FDR'):
         pval_idx= sortpvalue[leng - i]
         fdr=pval_idx[1]* leng /rank
         fdr_front=bh_fdr[-1][1]
-        if fdr>1:
-            bh_fdr.append((pval_idx[0],1))
-        elif fdr>fdr_front:
+        if fdr>fdr_front:
             bh_fdr.append((pval_idx[0],fdr_front))
         else:
             bh_fdr.append((pval_idx[0],fdr))
